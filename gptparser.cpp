@@ -3,7 +3,6 @@
 
 #include <QFileDialog>
 #include <QDir>
-#include <QDebug>
 #include <QMessageBox>
 #include <QHeaderView>
 
@@ -35,58 +34,70 @@ void GptParser::on_actionOpen_triggered()
     int index;
     QString tmpStr;
     QString strFileName = QFileDialog::getOpenFileName(this, "Open a file", QDir::homePath());
-    QByteArray fileNameByteArray = strFileName.toLocal8Bit();
-    const char *filename = fileNameByteArray.data();
+    QFile file(strFileName);
+    if (!file.open(QIODevice::ReadOnly)) return;
+    QByteArray gptData = file.readAll();
+    gpt_t *gpt = reinterpret_cast<gpt_t*>(gptData.data());
 
-    FILE *gptFile = fopen(filename, "r");
-    gpt_t gpt;
-    if(fread(&gpt, 1, sizeof(gpt_t), gptFile) != sizeof(gpt_t)) {
+    QString signature = "";
+    for(int i = 0 ; i < 8;i++)
+    {
+        signature += static_cast<char>(gpt->primary_gpt_header.signature[i]);
+    }
+    if (signature != "EFI PART")
+    {
         QMessageBox messageBox;
         messageBox.critical(this,"Error","Error opening GPT file!");
         messageBox.setFixedSize(500,200);
     }
-    else {
+    else
+    {
         ui->primaryTableWidget->setRowCount(0);
         ui->partitionTableWidget->setRowCount(0);
         ui->primaryTableWidget->insertRow(ui->primaryTableWidget->rowCount());
         index = ui->primaryTableWidget->rowCount() - 1;
-        tmpStr.sprintf("%s", gpt.primary_gpt_header.signature);
+        tmpStr.sprintf("%s", gpt->primary_gpt_header.signature);
         ui->primaryTableWidget->setItem(index, 0, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("%d", gpt.primary_gpt_header.gpt_revision);
+        tmpStr.sprintf("%d", gpt->primary_gpt_header.gpt_revision);
         ui->primaryTableWidget->setItem(index, 1, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("%d", gpt.primary_gpt_header.header_size);
+        tmpStr.sprintf("%d", gpt->primary_gpt_header.header_size);
         ui->primaryTableWidget->setItem(index, 2, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("%08X", gpt.primary_gpt_header.header_crc32);
+        tmpStr.sprintf("%08X", gpt->primary_gpt_header.header_crc32);
         ui->primaryTableWidget->setItem(index, 3, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("0x%08lX", gpt.primary_gpt_header.current_lba);
+        tmpStr.sprintf("0x%08llX", gpt->primary_gpt_header.current_lba);
         ui->primaryTableWidget->setItem(index, 4, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("0x%08lX", gpt.primary_gpt_header.backup_lba);
+        tmpStr.sprintf("0x%08llX", gpt->primary_gpt_header.backup_lba);
         ui->primaryTableWidget->setItem(index, 5, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("0x%08lX", gpt.primary_gpt_header.first_usable_partitions);
+        tmpStr.sprintf("0x%08llX", gpt->primary_gpt_header.first_usable_partitions);
         ui->primaryTableWidget->setItem(index, 6, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("0x%08lX", gpt.primary_gpt_header.last_usable_partitions);
+        tmpStr.sprintf("0x%08llX", gpt->primary_gpt_header.last_usable_partitions);
         ui->primaryTableWidget->setItem(index, 7, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("0x%08lX", gpt.primary_gpt_header.start_partition_entries);
+        tmpStr.sprintf("0x%08llX", gpt->primary_gpt_header.start_partition_entries);
         ui->primaryTableWidget->setItem(index, 8, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("%d", gpt.primary_gpt_header.number_of_partition_entries);
+        tmpStr.sprintf("%d", gpt->primary_gpt_header.number_of_partition_entries);
         ui->primaryTableWidget->setItem(index, 9, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("0x%08X", gpt.primary_gpt_header.number_of_partition_entries);
+        tmpStr.sprintf("0x%08X", gpt->primary_gpt_header.number_of_partition_entries);
         ui->primaryTableWidget->setItem(index, 10, new QTableWidgetItem(tmpStr));
-        tmpStr.sprintf("%08X", gpt.primary_gpt_header.partition_array_crc32);
+        tmpStr.sprintf("%08X", gpt->primary_gpt_header.partition_array_crc32);
         ui->primaryTableWidget->setItem(index, 11, new QTableWidgetItem(tmpStr));
 
-        for(uint32_t partition = 0; partition < gpt.primary_gpt_header.number_of_partition_entries; partition++) {
-            if(gpt.guid_partition_entries[partition].first_lba != 0x0 &&
-                    gpt.guid_partition_entries[partition].last_lba != 0x00) {
+        for(uint32_t partition = 0; partition < gpt->primary_gpt_header.number_of_partition_entries; partition++)
+        {
+            if(gpt->guid_partition_entries[partition].first_lba != 0x0 &&
+                    gpt->guid_partition_entries[partition].last_lba != 0x00)
+            {
                 ui->partitionTableWidget->insertRow(ui->partitionTableWidget->rowCount());
                 index = ui->partitionTableWidget->rowCount() - 1;
-                tmpStr.sprintf("%ld (0x%08lX)", gpt.guid_partition_entries[partition].first_lba, gpt.guid_partition_entries[partition].first_lba * LBA_SIZE);
+                tmpStr.sprintf("%lld (0x%08llX)", gpt->guid_partition_entries[partition].first_lba, gpt->guid_partition_entries[partition].first_lba * LBA_SIZE);
                 ui->partitionTableWidget->setItem(index, 0, new QTableWidgetItem(tmpStr));
-                tmpStr.sprintf("%ld (0x%08lX)", gpt.guid_partition_entries[partition].last_lba, gpt.guid_partition_entries[partition].last_lba * LBA_SIZE);
+                tmpStr.sprintf("%lld (0x%08llX)", gpt->guid_partition_entries[partition].last_lba, gpt->guid_partition_entries[partition].last_lba * LBA_SIZE);
                 ui->partitionTableWidget->setItem(index, 1, new QTableWidgetItem(tmpStr));
                 tmpStr = "";
                 for (int name = 0; name < 72; name++)
-                    tmpStr += gpt.guid_partition_entries[partition].partition_name[name];
+                {
+                    if(gpt->guid_partition_entries[partition].partition_name[name] != 0x00)
+                        tmpStr += static_cast<char>(gpt->guid_partition_entries[partition].partition_name[name]);
+                }
                 ui->partitionTableWidget->setItem(index, 2, new QTableWidgetItem(tmpStr));
             }
         }
